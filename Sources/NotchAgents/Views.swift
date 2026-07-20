@@ -460,27 +460,33 @@ struct QuestionCard: View {
                 .buttonStyle(.plain)
                 .help("Ответить в терминале")
             }
-            .frame(height: 14)
-            HStack(alignment: .top, spacing: 6) {
-                Text(prompt.header)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.notchAccent.opacity(0.18)))
-                    .foregroundColor(.notchAccent)
-                Text(prompt.question)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.92))
-                    .lineLimit(2)
-            }
-            .frame(height: 26, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 4) {
-                ForEach(Array(prompt.options.enumerated()), id: \.offset) { i, option in
-                    QuestionOptionRow(index: i + 1, option: option) {
-                        controller.questionHandler?(prompt.id, option.label)
+            .frame(height: 16)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(prompt.header)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.notchAccent.opacity(0.18)))
+                            .foregroundColor(.notchAccent)
+                            .fixedSize()
+                        Text(prompt.question)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.92))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(Array(prompt.options.enumerated()), id: \.offset) { i, option in
+                        QuestionOptionRow(index: i + 1, option: option) {
+                            controller.questionHandler?(prompt.id, option.label)
+                        }
                     }
                 }
+                .padding(.trailing, 2)
+            }
+            .frame(maxHeight: NotchMetrics.questionScrollMax)
+            VStack(spacing: 4) {
                 HStack(spacing: 8) {
                     Text("✏️")
                         .font(.system(size: 10))
@@ -515,7 +521,7 @@ struct QuestionCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .frame(height: NotchMetrics.questionHeight(optionCount: prompt.options.count))
+        .frame(height: NotchMetrics.questionHeight(for: prompt))
         .background(RoundedRectangle(cornerRadius: 14).fill(Color.notchCard))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.notchStroke, lineWidth: 1))
     }
@@ -529,26 +535,31 @@ struct QuestionOptionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Text("\(index)")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .frame(width: 16, height: 16)
                     .background(RoundedRectangle(cornerRadius: 5)
                         .fill(hovering ? Color.notchAccent.opacity(0.35) : Color.white.opacity(0.1)))
                     .foregroundColor(hovering ? .notchAccent : .white.opacity(0.75))
-                Text(option.label)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.92))
-                if !option.description.isEmpty {
-                    Text(option.description)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.45))
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.label)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.92))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !option.description.isEmpty {
+                        Text(option.description)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.45))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8)
-            .frame(height: 28)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 9)
                     .fill(Color.white.opacity(hovering ? 0.14 : 0.05))

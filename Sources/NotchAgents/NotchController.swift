@@ -42,9 +42,31 @@ enum NotchMetrics {
 
     static let wingWidth: CGFloat = 34
 
-    /// Высота карточки вопроса: варианты + строка своего ответа.
-    static func questionHeight(optionCount: Int) -> CGFloat {
-        66 + CGFloat(optionCount) * 32 + 32
+    // Карточка вопроса: шапка + прокручиваемый блок (вопрос+варианты) + поле ответа.
+    static let questionHeaderH: CGFloat = 22
+    static let questionInputH: CGFloat = 30
+    static let questionChrome: CGFloat = questionHeaderH + questionInputH + 30 // паддинги+зазоры
+    static let questionScrollMax: CGFloat = 300
+
+    /// Оценка высоты прокручиваемого контента вопроса (текст переносится).
+    static func questionContentHeight(_ q: QuestionPrompt) -> CGFloat {
+        func lines(_ s: String, perLine: Int, cap: Int) -> Int {
+            max(1, min(cap, (s.count + perLine - 1) / perLine))
+        }
+        let qLines = lines(q.question, perLine: 74, cap: 6)
+        var h = CGFloat(qLines) * 15 + 8
+        for opt in q.options {
+            var oh: CGFloat = 22 // строка лейбла
+            if !opt.description.isEmpty {
+                oh += CGFloat(min(2, (opt.description.count + 69) / 70)) * 14
+            }
+            h += oh + 6
+        }
+        return h
+    }
+
+    static func questionHeight(for q: QuestionPrompt) -> CGFloat {
+        questionChrome + min(questionContentHeight(q), questionScrollMax)
     }
 
     /// Высота карточки разрешения: базовая + блок мини-диффа, если есть.
@@ -89,7 +111,7 @@ enum NotchMetrics {
             if state.sessions.contains(where: { $0.sessionId == q.sessionId }) {
                 height += rowHeight + rowSpacing
             }
-            height += questionHeight(optionCount: q.options.count)
+            height += questionHeight(for: q)
         case .done(let c):
             if state.sessions.contains(where: { $0.sessionId == c.sessionId }) {
                 height += rowHeight + rowSpacing
@@ -104,7 +126,7 @@ enum NotchMetrics {
         let base = baseHeight(notch)
         let sessions = base + CGFloat(maxRows) * rowHeight + CGFloat(maxRows - 1) * rowSpacing
             + CGFloat(maxAlerts) * (alertHeight + rowSpacing)
-        let question = base + rowHeight + rowSpacing + questionHeight(optionCount: 4)
+        let question = base + rowHeight + rowSpacing + questionChrome + questionScrollMax
         // + запас под мини-дифф до 5 строк
         let permission = base + rowHeight + rowSpacing + promptCardHeight + 5 * 15 + 19
         return CGSize(width: expandedWidth, height: max(sessions, max(question, permission)))
@@ -281,15 +303,20 @@ final class NotchController {
     func openSession(_ session: AgentSession) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            // 1. мы уже открывали для неё окно — вернём его, а не плодим новое
+            // 1. мы уже открывали для неё окно Terminal — вернём его, а не плодим новое
             if let dev = self.openedTerminals[session.sessionId],
                TerminalLocator.focusTerminalTab(dev: dev) {
                 return
             }
-            // 2. сессия живёт в Terminal/iTerm — точный прыжок на её вкладку
-            if TerminalLocator.preciseJump(cwd: session.cwd) { return }
-            // 3. иначе — новое окно Terminal с resume, запоминаем его tty
-            DispatchQueue.main.async { self.openInTerminal(session) }
+            // 2. живая сессия: точная вкладка (Terminal/iTerm) или её терминал-хозяин.
+            //    resume НЕ делаем — это создало бы второй процесс на ту же сессию.
+            switch TerminalLocator.open(cwd: session.cwd) {
+            case .jumped, .hostActivated:
+                return
+            case .notLive:
+                // 3. сессия закрыта — только теперь честно resume в новом окне Terminal
+                DispatchQueue.main.async { self.openInTerminal(session) }
+            }
         }
     }
 
