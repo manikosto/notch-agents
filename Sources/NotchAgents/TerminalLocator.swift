@@ -3,49 +3,13 @@ import AppKit
 /// Точный прыжок к сессии: находим процесс агента по cwd, берём его tty
 /// и просим терминал выбрать вкладку с этим tty (Terminal.app, iTerm2).
 enum TerminalLocator {
-    /// true — сессия найдена и её терминал поднят (по возможности — точная вкладка);
-    /// false — живого процесса сессии нет (вызывающий может сделать resume).
-    static func jump(cwd: String) -> Bool {
+    /// Точный прыжок к вкладке сессии — только там, где терминал умеет выбрать
+    /// вкладку по tty (Terminal.app, iTerm2). Во всех остальных случаях false —
+    /// вызывающий откроет сессию в обычном Terminal через resume.
+    static func preciseJump(cwd: String) -> Bool {
         guard !cwd.isEmpty, let found = locate(cwd: cwd) else { return false }
         let dev = "/dev/\(found.tty)"
-        let host = hostingApp(forPid: found.pid)
-
-        // точная вкладка — там, где терминал это умеет
-        switch host?.bundleIdentifier {
-        case "com.apple.Terminal":
-            if terminalTabJump(dev) { return true }
-        case "com.googlecode.iterm2":
-            if itermTabJump(dev) { return true }
-        default:
-            break
-        }
-        // хозяин известен (Warp, Ghostty, VS Code, …) — поднимаем именно его.
-        // Важно: NSRunningApplication.activate из фонового приложения игнорируется,
-        // поэтому активируем через LaunchServices — ему права не нужны.
-        if let host, let url = host.bundleURL {
-            NSWorkspace.shared.openApplication(at: url,
-                                               configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
-            return true
-        }
-        // хозяина не вычислили (Warp переприцепляет шеллы к launchd) —
-        // попробуем вкладки вслепую, затем поднимем любой живой терминал:
-        // процесс сессии существует, значит resume делать нельзя.
-        if terminalTabJump(dev) || itermTabJump(dev) { return true }
-        activateAnyKnownTerminal()
-        return true
-    }
-
-    private static func activateAnyKnownTerminal() {
-        let ids = ["dev.warp.Warp-Stable", "com.googlecode.iterm2",
-                   "com.apple.Terminal", "com.mitchellh.ghostty"]
-        for id in ids {
-            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
-               let url = app.bundleURL {
-                NSWorkspace.shared.openApplication(at: url,
-                                                   configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
-                return
-            }
-        }
+        return terminalTabJump(dev) || itermTabJump(dev)
     }
 
     private static func terminalTabJump(_ dev: String) -> Bool {
@@ -121,29 +85,6 @@ enum TerminalLocator {
                 String(cString: $0)
             }
         }
-    }
-
-    /// ppid через sysctl — без spawn'а ps.
-    private static func parentPid(of pid: Int32) -> Int32? {
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        var info = kinfo_proc()
-        var size = MemoryLayout<kinfo_proc>.stride
-        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
-        return info.kp_eproc.e_ppid
-    }
-
-    /// Поднимаемся по цепочке родителей до GUI-приложения (Warp, Ghostty, VS Code, …).
-    private static func hostingApp(forPid pid: Int32) -> NSRunningApplication? {
-        var current = pid
-        for _ in 0..<8 {
-            guard let ppid = parentPid(of: current), ppid > 1 else { return nil }
-            if let app = NSRunningApplication(processIdentifier: ppid),
-               app.bundleIdentifier != nil {
-                return app
-            }
-            current = ppid
-        }
-        return nil
     }
 
     private static func isRunning(_ bundleId: String) -> Bool {

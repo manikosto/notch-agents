@@ -273,28 +273,35 @@ final class NotchController {
         scheduleCollapse(after: 10)
     }
 
-    /// Прыжок к сессии: точная вкладка (Terminal/iTerm), иначе — терминал-хозяин
-    /// (Warp, Ghostty, …). Если сессия нигде не запущена — поднимаем её заново.
+    /// Открыть сессию: точная вкладка (Terminal/iTerm по tty), во всех остальных
+    /// случаях — всегда обычный Terminal с resume (поднимать Warp с кучей вкладок
+    /// бесполезно — нужную всё равно не найти).
     func openSession(_ session: AgentSession) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            if TerminalLocator.jump(cwd: session.cwd) { return }
-            DispatchQueue.main.async {
-                if session.agent == "Claude", !session.sessionId.isEmpty {
-                    self.resumeInTerminal(session)
-                } else {
-                    self.focusTerminal()
-                }
-            }
+            if TerminalLocator.preciseJump(cwd: session.cwd) { return }
+            DispatchQueue.main.async { self.openInTerminal(session) }
         }
     }
 
-    /// Открыть новое окно Terminal с продолжением сессии (claude --resume).
-    private func resumeInTerminal(_ s: AgentSession) {
-        var cmd = "claude --resume \(s.sessionId)"
+    /// Новое окно Terminal: resume сессии агента в папке проекта.
+    private func openInTerminal(_ s: AgentSession) {
+        var cmd: String
+        switch s.agent {
+        case "Claude" where !s.sessionId.isEmpty:
+            cmd = "claude --resume \(s.sessionId)"
+        case "Codex" where !s.sessionId.isEmpty:
+            cmd = "codex resume \(s.sessionId)"
+        default:
+            cmd = ""   // просто окно в папке проекта
+        }
         if !s.cwd.isEmpty {
             let quoted = "'" + s.cwd.replacingOccurrences(of: "'", with: "'\\''") + "'"
-            cmd = "cd \(quoted) && " + cmd
+            cmd = cmd.isEmpty ? "cd \(quoted)" : "cd \(quoted) && " + cmd
+        }
+        guard !cmd.isEmpty else {
+            focusTerminal()
+            return
         }
         let escaped = cmd
             .replacingOccurrences(of: "\\", with: "\\\\")
