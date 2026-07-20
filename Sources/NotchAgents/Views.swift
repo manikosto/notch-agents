@@ -207,6 +207,51 @@ struct AlertGlow: View {
     }
 }
 
+// MARK: - Плашка обновления
+
+struct UpdateBanner: View {
+    let update: UpdateInfo
+    @ObservedObject var state: NotchState
+    let controller: NotchController
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(.notchAccent)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(state.updateBusy ? "Обновление…" : "Доступна версия \(update.version)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.95))
+                Text(state.updateBusy ? "скачиваю и устанавливаю" : "нажмите, чтобы обновиться")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+            Spacer(minLength: 8)
+            if state.updateBusy {
+                ProgressView().scaleEffect(0.5).frame(width: 20, height: 20)
+            } else {
+                Text("Update")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.notchAccent.opacity(hovering ? 1 : 0.85)))
+                    .foregroundColor(.white)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: NotchMetrics.updateBannerHeight)
+        .background(RoundedRectangle(cornerRadius: 13).fill(Color.notchAccent.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.notchAccent.opacity(0.4), lineWidth: 1))
+        .onHover { hovering = $0 }
+        .onTapGesture {
+            guard !state.updateBusy else { return }
+            controller.startUpdate()
+        }
+        .help("Скачать и установить обновление")
+    }
+}
+
 // MARK: - Развёрнутое состояние
 
 struct ExpandedView: View {
@@ -217,6 +262,10 @@ struct ExpandedView: View {
         VStack(spacing: 0) {
             UsageHeader(state: state)
             Color.clear.frame(height: 6)
+            if let u = state.update {
+                UpdateBanner(update: u, state: state, controller: controller)
+                Color.clear.frame(height: NotchMetrics.rowSpacing)
+            }
             content
             Spacer(minLength: 0)
             footer

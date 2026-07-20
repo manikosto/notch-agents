@@ -8,6 +8,8 @@ final class NotchState: ObservableObject {
     @Published var questions: [QuestionPrompt] = []
     @Published var completion: CompletionEvent?
     @Published var usage: UsageInfo?
+    @Published var update: UpdateInfo?
+    @Published var updateBusy = false
     @Published var defaultModel: String?
     @Published var expanded = false
     /// Пользователь ушёл с экрана события на список сессий («Show all sessions»).
@@ -39,6 +41,7 @@ enum NotchMetrics {
     static let maxPrompts = 2
     static let promptCardHeight: CGFloat = 92
     static let doneCardHeight: CGFloat = 84
+    static let updateBannerHeight: CGFloat = 46
 
     static let wingWidth: CGFloat = 34
 
@@ -90,6 +93,9 @@ enum NotchMetrics {
                           height: notch.height + (attention ? 5 : 0))
         }
         var height = baseHeight(notch)
+        if state.update != nil {
+            height += updateBannerHeight + rowSpacing
+        }
         switch state.screen {
         case .sessions:
             let alerts = min(state.alerts.count, maxAlerts)
@@ -129,7 +135,8 @@ enum NotchMetrics {
         let question = base + rowHeight + rowSpacing + questionChrome + questionScrollMax
         // + запас под мини-дифф до 5 строк
         let permission = base + rowHeight + rowSpacing + promptCardHeight + 5 * 15 + 19
-        return CGSize(width: expandedWidth, height: max(sessions, max(question, permission)))
+        let banner = updateBannerHeight + rowSpacing
+        return CGSize(width: expandedWidth, height: banner + max(sessions, max(question, permission)))
     }
 }
 
@@ -183,6 +190,10 @@ final class NotchController {
     private let space = CGSSpace()
     private var collapseWork: DispatchWorkItem?
     private var hovering = false
+
+    /// Пользователь нажал «Update» в плашке.
+    var updateHandler: (() -> Void)?
+    func startUpdate() { updateHandler?() }
 
     /// Решение по запросу разрешения из карточки в нотче.
     var permissionHandler: ((String, PermissionAction) -> Void)?

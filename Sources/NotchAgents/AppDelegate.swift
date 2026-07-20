@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let monitor = SessionMonitor()
     private let hookServer = HookServer()
     private let usageMonitor = UsageMonitor()
+    private let updater = Updater()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = NotchController(state: state)
@@ -45,6 +46,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.defaultModel = ModelManager.currentModel()
 
+        // Проверка обновлений (GitHub Releases) + установка нотаризованного DMG
+        updater.onUpdate = { [weak self] info in self?.state.update = info }
+        updater.onInstallState = { [weak self] st in
+            guard let self else { return }
+            switch st {
+            case .downloading, .installing:
+                self.state.updateBusy = true
+            case .failed(let msg):
+                self.state.updateBusy = false
+                self.notifyUpdateFailed(msg)
+            }
+        }
+        controller.updateHandler = { [weak self] in
+            guard let self, let info = self.state.update, !self.state.updateBusy else { return }
+            self.updater.install(info)
+        }
+        updater.start()
+
         // Zero-config: сами подключаем хуки Claude Code и notify Codex (идемпотентно)
         DispatchQueue.global(qos: .utility).async { HookInstaller.ensureAll() }
 
@@ -53,6 +72,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerLoginItemIfBundled()
 
         let menu = NSMenu()
+        let checkItem = NSMenuItem(title: "Проверить обновления",
+                                   action: #selector(checkForUpdates),
+                                   keyEquivalent: "")
+        checkItem.target = self
+        menu.addItem(checkItem)
+        menu.addItem(.separator())
         let resetItem = NSMenuItem(title: "Сбросить правила Always Allow",
                                    action: #selector(resetAlwaysRules),
                                    keyEquivalent: "")
@@ -362,6 +387,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func resetAlwaysRules() {
         PermissionRules.clear()
+    }
+
+    @objc private func checkForUpdates() {
+        updater.check()
+    }
+
+    private func notifyUpdateFailed(_ msg: String) {
+        let a = NSAlert()
+        a.messageText = "Обновление не удалось"
+        a.informativeText = msg
+        a.addButton(withTitle: "OK")
+        if let info = state.update {
+            a.addButton(withTitle: "Открыть страницу релиза")
+            if a.runModal() == .alertSecondButtonReturn {
+                NSWorkspace.shared.open(info.pageURL)
+            }
+        } else {
+            a.runModal()
+        }
     }
 
     // MARK: - Автозапуск при логине (только из .app-бандла)
