@@ -1,0 +1,11 @@
+# в образ нужен только лендинг — всё остальное вон, чтобы контекст был лёгким
+Sources
+scripts
+.build
+build
+.git
+.claude
+Package.swift
+README.md
+LICENSE
+landing/Dockerfile

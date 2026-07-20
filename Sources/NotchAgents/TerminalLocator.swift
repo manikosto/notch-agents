@@ -12,6 +12,29 @@ enum TerminalLocator {
         return terminalTabJump(dev) || itermTabJump(dev)
     }
 
+    /// Выбрать уже открытую вкладку Terminal.app по её tty (например «/dev/ttys012»).
+    /// true — вкладка ещё жива и вышла на передний план.
+    static func focusTerminalTab(dev: String) -> Bool {
+        terminalTabJump(dev)
+    }
+
+    /// Открыть новое окно Terminal.app с командой и вернуть tty этой вкладки
+    /// («/dev/ttysNNN»), чтобы к ней можно было прыгать повторно.
+    static func runInNewTerminal(command: String) -> String? {
+        let escaped = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let script = """
+        tell application "Terminal"
+          activate
+          set theTab to do script "\(escaped)"
+          return tty of theTab
+        end tell
+        """
+        let out = osascript(script)
+        return out.hasPrefix("/dev/tty") ? out : nil
+    }
+
     private static func terminalTabJump(_ dev: String) -> Bool {
         guard isRunning("com.apple.Terminal") else { return false }
         let script = """

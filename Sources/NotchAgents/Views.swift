@@ -587,7 +587,7 @@ struct DoneCard: View {
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(.white.opacity(hovering ? 0.7 : 0.4))
             }
-            Text(completion.summary)
+            Text(renderMarkdown(completion.summary))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(.white.opacity(0.85))
                 .lineLimit(3)
@@ -895,6 +895,18 @@ struct Chip: View {
 }
 
 // MARK: - Helpers
+
+/// Инлайновый markdown → AttributedString (жирный, курсив, ссылки, код),
+/// переносы строк схлопываем в пробел — карточка узкая.
+func renderMarkdown(_ raw: String) -> AttributedString {
+    let flat = raw.replacingOccurrences(of: "\n", with: " ")
+    var opts = AttributedString.MarkdownParsingOptions()
+    opts.interpretedSyntax = .inlineOnlyPreservingWhitespace
+    if let attr = try? AttributedString(markdown: flat, options: opts) {
+        return attr
+    }
+    return AttributedString(flat)
+}
 
 func agentColor(_ agent: String) -> Color {
     switch agent {

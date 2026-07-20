@@ -273,13 +273,22 @@ final class NotchController {
         scheduleCollapse(after: 10)
     }
 
-    /// Открыть сессию: точная вкладка (Terminal/iTerm по tty), во всех остальных
-    /// случаях — всегда обычный Terminal с resume (поднимать Warp с кучей вкладок
-    /// бесполезно — нужную всё равно не найти).
+    /// sessionId → tty окна Terminal, которое мы для неё уже открыли.
+    private var openedTerminals: [String: String] = [:]
+
+    /// Открыть сессию: сначала — уже открытое нами окно Terminal, затем точная
+    /// вкладка (Terminal/iTerm по tty), иначе — новое окно Terminal с resume.
     func openSession(_ session: AgentSession) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
+            // 1. мы уже открывали для неё окно — вернём его, а не плодим новое
+            if let dev = self.openedTerminals[session.sessionId],
+               TerminalLocator.focusTerminalTab(dev: dev) {
+                return
+            }
+            // 2. сессия живёт в Terminal/iTerm — точный прыжок на её вкладку
             if TerminalLocator.preciseJump(cwd: session.cwd) { return }
+            // 3. иначе — новое окно Terminal с resume, запоминаем его tty
             DispatchQueue.main.async { self.openInTerminal(session) }
         }
     }
@@ -303,19 +312,13 @@ final class NotchController {
             focusTerminal()
             return
         }
-        let escaped = cmd
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = """
-        tell application "Terminal"
-            activate
-            do script "\(escaped)"
-        end tell
-        """
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", script]
-        try? p.run()
+        let sid = s.sessionId
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let dev = TerminalLocator.runInNewTerminal(command: cmd)
+            if let dev, !sid.isEmpty {
+                DispatchQueue.main.async { self?.openedTerminals[sid] = dev }
+            }
+        }
     }
 
     /// Переключиться в терминал, где живут сессии.
